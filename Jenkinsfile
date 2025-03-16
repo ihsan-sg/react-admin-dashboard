@@ -1,56 +1,50 @@
-/* Requires the Docker Pipeline plugin */
 pipeline {
-    agent { docker { image 'node:22.14.0-alpine3.21' } }
-
-    parameters {
-        choice(name: 'ENV', choices: ['development', 'testing', 'production'], description: 'Select the environment')
-    }
+    agent any
 
     environment {
-        NODE_VERSION = '22.14.0'
+        NODE_VERSION = '22.14.0-alpine3.21'
+    }
+
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['development', 'staging', 'production'], description: 'Select the deployment environment')
     }
 
     stages {
-        stage('Setup') {
+        stage('Checkout') {
+            steps {
+                git branch: 'master', url: 'https://github.com/ihsan-sg/react-admin-dashboard.git'
+            }
+        }
+
+        stage('Set Environment Variables') {
             steps {
                 script {
-                    if (params.ENV == 'development') {
-                        echo "Running in Development Environment"
-                        env.CONFIG_FILE = 'config/dev-config.yml'
-                    } else if (params.ENV == 'testing') {
-                        echo "Running in Testing Environment"
-                        env.CONFIG_FILE = 'config/test-config.yml'
-                    } else if (params.ENV == 'production') {
-                        echo "Running in Production Environment"
-                        env.CONFIG_FILE = 'config/prod-config.yml'
+                    if (params.ENVIRONMENT == 'development') {
+                        env.API_URL = 'https://dev.api.example.com'
+                        env.DB_CONNECTION = 'dev-db'
+                    } else if (params.ENVIRONMENT == 'staging') {
+                        env.API_URL = 'https://staging.api.example.com'
+                        env.DB_CONNECTION = 'staging-db'
+                    } else if (params.ENVIRONMENT == 'production') {
+                        env.API_URL = 'https://api.example.com'
+                        env.DB_CONNECTION = 'prod-db'
                     }
+                    echo "Selected Environment: ${params.ENVIRONMENT}"
+                    echo "API URL: ${env.API_URL}"
+                    echo "Database Connection: ${env.DB_CONNECTION}"
                 }
             }
         }
 
         stage('Build') {
-            steps {
-                sh 'node --version'
-                echo "Using configuration file: ${env.CONFIG_FILE}"
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                script {
-                    if (params.ENV == 'production') {
-                        input message: 'Approve Production Deployment?'
-                    }
-                    echo "Deploying to ${params.ENV} environment..."
-                    sh "deploy.sh --env ${params.ENV} --config ${env.CONFIG_FILE}"
+            agent {
+                docker {
+                    image "node:${NODE_VERSION}"
+                    args '-w /app'
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            echo "Pipeline execution completed for ${params.ENV}"
-        }
-    }
-}
+            steps {
+                script {
+                    sh 'npm install'
+                    sh 'npm run build'
+        
